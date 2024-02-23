@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 void main() {
@@ -12,6 +15,9 @@ class MainApp extends StatefulWidget {
   @override
   State<MainApp> createState() => _MainAppState();
 }
+
+final _scrollViewKey = GlobalKey();
+final _scroller = ScrollController();
 
 class _MainAppState extends State<MainApp> {
   final elements = ValueNotifier<List<Element>>([]);
@@ -34,64 +40,159 @@ class _MainAppState extends State<MainApp> {
     super.initState();
   }
 
+  var _timerMove = Timer(Duration.zero, () {});
+  bool? isMoveUp = false;
+  bool isDragging = false;
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
         backgroundColor: Colors.blueGrey,
-        body: SingleChildScrollView(
-          child: ValueListenableBuilder(
-              valueListenable: elements,
-              builder: (context, elementsValue, _) {
-                return ElementTree(
-                  elementsValue,
-                  onReorder: (element, targetId, position) {
-                    if (element.id == targetId) return;
+        body: Container(
+          margin: const EdgeInsets.symmetric(
+            vertical: 64,
+            horizontal: 16,
+          ),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: Colors.black,
+            ),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: SingleChildScrollView(
+            controller: _scroller,
+            key: _scrollViewKey,
+            child: Listener(
+              onPointerMove: (event) {
+                if (!isDragging) {
+                  _timerMove.cancel();
+                  isMoveUp = null;
+                  return;
+                }
+                ;
+                const moveDistance = 3;
+                const detectedRange = 100;
 
-                    //
-                    final newElements = [...elementsValue];
-                    for (int i = 0; i < newElements.length; i++) {
-                      if (newElements[i].id == element.id) {
-                        newElements.removeAt(i);
-                      } else {
-                        newElements[i].removeId(element.id);
+                final scrollView = _scrollViewKey.currentContext
+                    ?.findRenderObject() as RenderBox?;
+                if (scrollView != null) {
+                  final topY = scrollView.localToGlobal(Offset.zero).dy;
+                  final bottomY = topY + scrollView.size.height;
+                  if (event.position.dy < topY + detectedRange) {
+                    isMoveUp = true;
+                    _timerMove.cancel();
+                    void move() {
+                      if (_scroller.offset <= 0) {
+                        _scroller.jumpTo(-moveDistance.toDouble());
+                        return;
                       }
+                      _scroller.jumpTo(_scroller.offset -
+                          moveDistance -
+                          max(0, topY - event.position.dy));
                     }
-                    //
-                    if (position == DragAlign.center) {
-                      print('newparent');
-                      for (int i = 0; i < newElements.length; i++) {
-                        if (newElements[i].insertChild(targetId, element)) {
-                          break;
-                        }
-                      }
-                    } else {
-                      print('newsibling');
-                      if (newElements
-                          .any((element) => element.id == targetId)) {
-                        final targetIndex = newElements.indexWhere(
-                          (element) => element.id == targetId,
+
+                    move();
+                    _timerMove = Timer.periodic(Durations.short1, (timer) {
+                      move();
+                    });
+                  } else if (event.position.dy > bottomY - detectedRange) {
+                    isMoveUp = false;
+                    _timerMove.cancel();
+                    void move() {
+                      if (_scroller.offset >=
+                          _scroller.position.maxScrollExtent) {
+                        _scroller.jumpTo(
+                          _scroller.position.maxScrollExtent + moveDistance,
                         );
-                        if (position == DragAlign.top) {
-                          newElements.insert(targetIndex, element);
-                        } else if (position == DragAlign.bottom) {
-                          newElements.insert(targetIndex + 1, element);
-                        }
-                      } else {
-                        for (int i = 0; i < newElements.length; i++) {
-                          print('target not found');
-                          newElements[i]
-                              .insertSibling(targetId, element, position);
-                        }
+                        return;
                       }
+                      _scroller.jumpTo(_scroller.offset +
+                          moveDistance +
+                          max(0, event.position.dy - bottomY));
                     }
-                    //
 
-                    elements.value.clear();
-                    elements.value = [...newElements];
-                  },
-                );
-              }),
+                    move();
+                    _timerMove = Timer.periodic(Durations.short1, (timer) {
+                      move();
+                    });
+                  } else {
+                    _timerMove.cancel();
+                    isMoveUp = null;
+                  }
+                }
+              },
+              onPointerCancel: (event) {
+                setState(() {
+                  isDragging = false;
+                });
+                _timerMove.cancel();
+                isMoveUp = null;
+              },
+              onPointerUp: (event) {
+                setState(() {
+                  isDragging = false;
+                });
+                _timerMove.cancel();
+                isMoveUp = null;
+              },
+              child: ValueListenableBuilder(
+                  valueListenable: elements,
+                  builder: (context, elementsValue, _) {
+                    return ElementTree(
+                      elementsValue,
+                      onDrag: () => setState(() {
+                        isDragging = true;
+                      }),
+                      onReorder: (element, targetId, position) {
+                        if (element.id == targetId) return;
+
+                        //
+                        final newElements = [...elementsValue];
+                        for (int i = 0; i < newElements.length; i++) {
+                          if (newElements[i].id == element.id) {
+                            newElements.removeAt(i);
+                          } else {
+                            newElements[i].removeId(element.id);
+                          }
+                        }
+                        //
+                        if (position == DragAlign.center) {
+                          print('newparent');
+                          for (int i = 0; i < newElements.length; i++) {
+                            if (newElements[i].insertChild(targetId, element)) {
+                              break;
+                            }
+                          }
+                        } else {
+                          print('newsibling');
+                          if (newElements
+                              .any((element) => element.id == targetId)) {
+                            final targetIndex = newElements.indexWhere(
+                              (element) => element.id == targetId,
+                            );
+                            if (position == DragAlign.top) {
+                              newElements.insert(targetIndex, element);
+                            } else if (position == DragAlign.bottom) {
+                              newElements.insert(targetIndex + 1, element);
+                            }
+                          } else {
+                            for (int i = 0; i < newElements.length; i++) {
+                              print('target not found');
+                              newElements[i]
+                                  .insertSibling(targetId, element, position);
+                            }
+                          }
+                        }
+                        //
+
+                        elements.value.clear();
+                        elements.value = [...newElements];
+                      },
+                    );
+                  }),
+            ),
+          ),
         ),
       ),
     );
@@ -162,7 +263,8 @@ class Element {
 }
 
 class ElementTree extends StatelessWidget {
-  const ElementTree(this.elements, {super.key, required this.onReorder});
+  const ElementTree(this.elements,
+      {super.key, required this.onReorder, required this.onDrag});
 
   final List<Element> elements;
   final void Function(
@@ -170,6 +272,7 @@ class ElementTree extends StatelessWidget {
     String targetId,
     DragAlign position,
   ) onReorder;
+  final void Function() onDrag;
 
   @override
   Widget build(BuildContext context) {
@@ -180,6 +283,7 @@ class ElementTree extends StatelessWidget {
             (element) => ElementWidget(
               element,
               onReorder: onReorder,
+              onDrag: onDrag,
             ),
           )
           .toList(),
@@ -188,7 +292,8 @@ class ElementTree extends StatelessWidget {
 }
 
 class ElementWidget extends StatefulWidget {
-  const ElementWidget(this.element, {super.key, required this.onReorder});
+  const ElementWidget(this.element,
+      {super.key, required this.onReorder, required this.onDrag});
 
   final Element element;
   final void Function(
@@ -196,6 +301,7 @@ class ElementWidget extends StatefulWidget {
     String targetId,
     DragAlign position,
   ) onReorder;
+  final void Function() onDrag;
 
   @override
   State<ElementWidget> createState() => _ElementWidgetState();
@@ -225,19 +331,22 @@ class _ElementWidgetState extends State<ElementWidget> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         DragTarget<Element>(
-            onMove: (details) => setState(() {
-                  position = switch (details.offset.dy) {
-                    _
-                        when details.offset.dy <=
-                            widgetOffset.dy + widgetSize.height / 4 =>
-                      DragAlign.top,
-                    _
-                        when details.offset.dy >=
-                            widgetOffset.dy + 3 * widgetSize.height / 4 =>
-                      DragAlign.bottom,
-                    _ => DragAlign.center,
-                  };
-                }),
+            onMove: (details) {
+              widget.onDrag();
+              setState(() {
+                position = switch (details.offset.dy) {
+                  _
+                      when details.offset.dy <=
+                          widgetOffset.dy + widgetSize.height / 4 =>
+                    DragAlign.top,
+                  _
+                      when details.offset.dy >=
+                          widgetOffset.dy + 3 * widgetSize.height / 4 =>
+                    DragAlign.bottom,
+                  _ => DragAlign.center,
+                };
+              });
+            },
             onLeave: (data) => setState(() {
                   position = DragAlign.none;
                 }),
@@ -298,6 +407,7 @@ class _ElementWidgetState extends State<ElementWidget> {
             child: ElementWidget(
               element,
               onReorder: widget.onReorder,
+              onDrag: widget.onDrag,
             ),
           ),
         ),

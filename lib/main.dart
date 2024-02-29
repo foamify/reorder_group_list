@@ -327,91 +327,125 @@ class _ElementWidgetState extends State<ElementWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        DragTarget<Element>(
-            onMove: (details) {
-              widget.onDrag();
-              setState(() {
-                position = switch (details.offset.dy) {
-                  _
-                      when details.offset.dy <=
-                          widgetOffset.dy + widgetSize.height / 4 =>
-                    DragAlign.top,
-                  _
-                      when details.offset.dy >=
-                          widgetOffset.dy + 3 * widgetSize.height / 4 =>
-                    DragAlign.bottom,
-                  _ => DragAlign.center,
-                };
-              });
-            },
-            onLeave: (data) => setState(() {
+    return CustomPaint(
+      painter: TopBottomLinePainter(
+          isTop: switch (position) {
+        DragAlign.top => true,
+        DragAlign.bottom => false,
+        _ => null,
+      }),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 13),
+          DragTarget<Element>(
+              onMove: (details) {
+                widget.onDrag();
+                setState(() {
+                  position = switch (details.offset.dy) {
+                    _
+                        when details.offset.dy <=
+                            widgetOffset.dy + widgetSize.height / 4 =>
+                      DragAlign.top,
+                    _
+                        when details.offset.dy >=
+                            widgetOffset.dy + 3 * widgetSize.height / 4 =>
+                      DragAlign.bottom,
+                    _ => DragAlign.center,
+                  };
+                });
+              },
+              onLeave: (data) => setState(() {
+                    position = DragAlign.none;
+                  }),
+              onAcceptWithDetails: (details) {
+                widget.onReorder(
+                  details.data,
+                  widget.element.id,
+                  position,
+                );
+                setState(() {
                   position = DragAlign.none;
-                }),
-            onAcceptWithDetails: (details) {
-              widget.onReorder(
-                details.data,
-                widget.element.id,
-                position,
-              );
-              setState(() {
-                position = DragAlign.none;
-              });
-            },
-            builder: (context, candidateData, rejectedData) {
-              final renderBox = context.findRenderObject() as RenderBox?;
-              widgetOffset =
-                  renderBox?.localToGlobal(Offset.zero) ?? widgetOffset;
-              widgetSize = renderBox?.size ?? widgetSize;
-              return DecoratedBox(
-                decoration: BoxDecoration(
-                  border: position == DragAlign.center
-                      ? Border.all(color: Colors.red, width: 2)
-                      : Border(
-                          top: BorderSide(
-                              width: 2,
-                              color: position == DragAlign.top
-                                  ? Colors.red
-                                  : Colors.transparent),
-                          bottom: BorderSide(
-                            width: 2,
-                            color: position == DragAlign.bottom
-                                ? Colors.red
-                                : Colors.transparent,
-                          )),
-                ),
-                position: DecorationPosition.foreground,
-                child: Draggable<Element>(
-                  data: widget.element,
-                  feedback: const SizedBox.shrink(),
-                  dragAnchorStrategy: (draggable, context, position) =>
-                      pointerDragAnchorStrategy(draggable, context, position),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white),
-                      borderRadius: BorderRadius.circular(10),
-                      color: Colors.white.withOpacity(0.5),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    margin: const EdgeInsets.all(1),
-                    child: Text(widget.element.id),
+                });
+              },
+              builder: (context, candidateData, rejectedData) {
+                final renderBox = context.findRenderObject() as RenderBox?;
+                widgetOffset =
+                    renderBox?.localToGlobal(Offset.zero) ?? widgetOffset;
+                widgetSize = renderBox?.size ?? widgetSize;
+                return DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: position == DragAlign.center
+                        ? Border.all(color: Colors.red, width: 2)
+                        : null,
                   ),
-                ),
-              );
-            }),
-        ...widget.element.children.map(
-          (element) => Padding(
-            padding: const EdgeInsets.only(left: 16),
-            child: ElementWidget(
-              element,
-              onReorder: widget.onReorder,
-              onDrag: widget.onDrag,
-            ),
-          ),
-        ),
-      ],
+                  position: DecorationPosition.foreground,
+                  child: Draggable<Element>(
+                    data: widget.element,
+                    feedback: const SizedBox.shrink(),
+                    dragAnchorStrategy: (draggable, context, position) =>
+                        pointerDragAnchorStrategy(draggable, context, position),
+                    child: Container(
+                      height: 140,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.white),
+                        borderRadius: BorderRadius.circular(10),
+                        color: Colors.white.withOpacity(0.5),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      margin: const EdgeInsets.all(8),
+                      child: Text(widget.element.id),
+                    ),
+                  ),
+                );
+              }),
+          // ...widget.element.children.map(
+          //   (element) => Padding(
+          //     padding: const EdgeInsets.only(left: 16),
+          //     child: ElementWidget(
+          //       element,
+          //       onReorder: widget.onReorder,
+          //       onDrag: widget.onDrag,
+          //     ),
+          //   ),
+          // ),
+        ],
+      ),
     );
   }
+}
+
+class TopBottomLinePainter extends CustomPainter {
+  TopBottomLinePainter({super.repaint, required this.isTop});
+  final bool? isTop;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (isTop == null) {
+      return;
+    }
+    final paint = Paint()
+          //
+          ..color = Colors.lightGreen
+          ..strokeWidth = 2
+          ..style = PaintingStyle.stroke
+        //
+        ;
+    if (isTop!) {
+      canvas.drawLine(
+        const Offset(0, 0),
+        Offset(size.width, 0),
+        paint,
+      );
+    } else {
+      canvas.drawLine(
+        Offset(0, size.height),
+        Offset(size.width, size.height),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

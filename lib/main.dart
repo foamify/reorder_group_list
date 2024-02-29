@@ -150,18 +150,22 @@ class _MainAppState extends State<MainApp> {
 
                         //
                         final newElements = [...elementsValue];
-                        for (int i = 0; i < newElements.length; i++) {
-                          if (newElements[i].id == element.id) {
-                            newElements.removeAt(i);
-                          } else {
-                            newElements[i].removeId(element.id);
+                        void deleteElement() {
+                          for (int i = 0; i < newElements.length; i++) {
+                            if (newElements[i].id == element.id) {
+                              newElements.removeAt(i);
+                            } else {
+                              newElements[i].removeId(element.id);
+                            }
                           }
                         }
+
                         //
                         if (position == DragAlign.center) {
                           print('newparent');
                           for (int i = 0; i < newElements.length; i++) {
-                            if (newElements[i].insertChild(targetId, element)) {
+                            if (newElements[i].insertChild(
+                                targetId, element, deleteElement)) {
                               break;
                             }
                           }
@@ -180,8 +184,8 @@ class _MainAppState extends State<MainApp> {
                           } else {
                             for (int i = 0; i < newElements.length; i++) {
                               print('target not found');
-                              newElements[i]
-                                  .insertSibling(targetId, element, position);
+                              newElements[i].insertSibling(
+                                  targetId, element, position, deleteElement);
                             }
                           }
                         }
@@ -217,15 +221,20 @@ class Element {
     }
   }
 
-  bool insertChild(String targetId, Element element) {
+  bool insertChild(String targetId, Element element, Function deleteElement) {
+    if (id == element.id || parentId == element.id) {
+      return false;
+    }
     print('Inserting child with id: $targetId and element id: ${element.id}');
     element.parentId = targetId;
     if (id == targetId) {
       print('Setting parent for element with id: ${element.id}');
+      deleteElement();
       children.add(element);
       return true;
     }
     if (children.any((element) => element.id == targetId)) {
+      deleteElement();
       final newParentIndex =
           children.indexWhere((element) => element.id == targetId);
       final newParent = children[newParentIndex];
@@ -234,15 +243,20 @@ class Element {
       return true;
     }
     for (final child in children) {
-      if (child.insertChild(targetId, element)) {
+      if (child.insertChild(targetId, element, deleteElement)) {
         return true;
       }
     }
     return false;
   }
 
-  bool insertSibling(String targetId, Element element, DragAlign position) {
+  bool insertSibling(String targetId, Element element, DragAlign position,
+      Function deleteElement) {
+    if (id == element.id || parentId == element.id) {
+      return false;
+    }
     if (children.any((element) => element.id == targetId)) {
+      deleteElement();
       final siblingIndex =
           children.indexWhere((element) => element.id == targetId);
       element.parentId = targetId;
@@ -254,7 +268,7 @@ class Element {
       return true;
     } else {
       for (final child in children) {
-        if (child.insertSibling(targetId, element, position)) {
+        if (child.insertSibling(targetId, element, position, deleteElement)) {
           return true;
         }
       }
@@ -328,97 +342,88 @@ class _ElementWidgetState extends State<ElementWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: TopBottomLinePainter(
-          isTop: switch (position) {
-        DragAlign.top => true,
-        _ => null,
-      }),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 13),
-          CustomPaint(
-            painter: TopBottomLinePainter(
-                isTop: switch (position) {
-              DragAlign.bottom => false,
-              _ => null,
-            }),
-            child: DragTarget<Element>(
-                onMove: (details) {
-                  widget.onDrag();
-                  setState(() {
-                    position = switch (details.offset.dy) {
-                      _
-                          when details.offset.dy <=
-                              widgetOffset.dy + widgetSize.height / 4 =>
-                        DragAlign.top,
-                      _
-                          when details.offset.dy >=
-                              widgetOffset.dy + 3 * widgetSize.height / 4 =>
-                        DragAlign.bottom,
-                      _ => DragAlign.center,
-                    };
-                  });
-                },
-                onLeave: (data) => setState(() {
-                      position = DragAlign.none;
-                    }),
-                onAcceptWithDetails: (details) {
-                  widget.onReorder(
-                    details.data,
-                    widget.element.id,
-                    position,
-                  );
-                  setState(() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CustomPaint(
+          painter: TopBottomLinePainter(
+              isTop: switch (position) {
+            DragAlign.top => true,
+            DragAlign.bottom => false,
+            _ => null,
+          }),
+          child: DragTarget<Element>(
+              onMove: (details) {
+                widget.onDrag();
+                setState(() {
+                  position = switch (details.offset.dy) {
+                    _
+                        when details.offset.dy <=
+                            widgetOffset.dy + widgetSize.height / 4 =>
+                      DragAlign.top,
+                    _
+                        when details.offset.dy >=
+                            widgetOffset.dy + 3 * widgetSize.height / 4 =>
+                      DragAlign.bottom,
+                    _ => DragAlign.center,
+                  };
+                });
+              },
+              onLeave: (data) => setState(() {
                     position = DragAlign.none;
-                  });
-                },
-                builder: (context, candidateData, rejectedData) {
-                  final renderBox = context.findRenderObject() as RenderBox?;
-                  widgetOffset =
-                      renderBox?.localToGlobal(Offset.zero) ?? widgetOffset;
-                  widgetSize = renderBox?.size ?? widgetSize;
-                  return DecoratedBox(
-                    decoration: BoxDecoration(
-                      border: position == DragAlign.center
-                          ? Border.all(color: Colors.red, width: 2)
-                          : null,
-                    ),
-                    position: DecorationPosition.foreground,
-                    child: Draggable<Element>(
-                      data: widget.element,
-                      feedback: const SizedBox.shrink(),
-                      dragAnchorStrategy: (draggable, context, position) =>
-                          pointerDragAnchorStrategy(
-                              draggable, context, position),
-                      child: Container(
-                        height: 80,
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.white),
-                          borderRadius: BorderRadius.circular(10),
-                          color: Colors.white.withOpacity(0.5),
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        margin: const EdgeInsets.all(8),
-                        child: Text(widget.element.id),
+                  }),
+              onAcceptWithDetails: (details) {
+                widget.onReorder(
+                  details.data,
+                  widget.element.id,
+                  position,
+                );
+                setState(() {
+                  position = DragAlign.none;
+                });
+              },
+              builder: (context, candidateData, rejectedData) {
+                final renderBox = context.findRenderObject() as RenderBox?;
+                widgetOffset =
+                    renderBox?.localToGlobal(Offset.zero) ?? widgetOffset;
+                widgetSize = renderBox?.size ?? widgetSize;
+                return DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: position == DragAlign.center
+                        ? Border.all(color: Colors.red, width: 2)
+                        : null,
+                  ),
+                  position: DecorationPosition.foreground,
+                  child: Draggable<Element>(
+                    data: widget.element,
+                    feedback: const SizedBox.shrink(),
+                    dragAnchorStrategy: (draggable, context, position) =>
+                        pointerDragAnchorStrategy(draggable, context, position),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.white),
+                        borderRadius: BorderRadius.circular(10),
+                        color: Colors.white.withOpacity(0.5),
                       ),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      margin: const EdgeInsets.all(8),
+                      child: Text(widget.element.id),
                     ),
-                  );
-                }),
-          ),
-          ...widget.element.children.map(
-            (element) => Padding(
-              padding: const EdgeInsets.only(left: 16),
-              child: ElementWidget(
-                element,
-                onReorder: widget.onReorder,
-                onDrag: widget.onDrag,
-              ),
+                  ),
+                );
+              }),
+        ),
+        ...widget.element.children.map(
+          (element) => Padding(
+            padding: const EdgeInsets.only(left: 16),
+            child: ElementWidget(
+              element,
+              onReorder: widget.onReorder,
+              onDrag: widget.onDrag,
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
